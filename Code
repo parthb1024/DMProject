@@ -2,6 +2,11 @@ library(ggplot2)
 library(dplyr)
 library(tidyr)
 library(tidyverse)
+library(lubridate)
+library(caret)
+library(stringr)
+library(DT)
+library(leaflet)
 
 melhousing <- read_csv("C:/Users/student/Downloads/Melbourne_housing_FULL.csv")
 
@@ -89,3 +94,147 @@ ggplot(price_top10subs, aes(Suburb, Price, fill = Suburb))+
   scale_fill_manual(values = mycolors)+
   scale_y_continuous(breaks = c(seq(1000000,6000000,1000000)),
                      labels = c(paste("$", 1:6, "m", sep = "")))
+
+Suburbs = c(head(as.character(suburbData$Suburb),20))
+
+
+SuburbsTop = melData %>% 
+  filter(!is.na(Price)) %>% 
+  filter(!is.na(Lattitude)) %>% 
+  filter(!is.na(Longtitude)) %>% 
+  filter(Suburb %in% Suburbs)
+
+center_lon = median(SuburbsTop$Longtitude)
+center_lat = median(SuburbsTop$Lattitude)
+
+
+leaflet(SuburbsTop) %>% addTiles() %>%
+  addCircles(lng = ~Longtitude, lat = ~Lattitude,radius = 3,
+             color = c("red"))  %>%
+  # controls
+  setView(lng=center_lon, lat=center_lat, zoom=12)
+  
+  
+roomData = melData %>% filter(!is.na(Price)) %>%
+  group_by(Rooms) %>% 
+  summarise(AvgPricePerRoom = round(median(Price),0)) %>%
+  arrange(desc(AvgPricePerRoom))
+
+roomData$AvgPriceRoom = scales::dollar(roomData$AvgPricePerRoom)
+
+roomDataFull =roomData %>% select(Rooms,AvgPriceRoom)
+
+colnames(roomDataFull) = c("No.of.Rooms","Price")
+
+datatable(roomDataFull, style="bootstrap", class="table-condensed", options = list(dom = 'tp',scrollX = TRUE))
+
+ggplot(roomData, aes(x = Rooms,y = AvgPricePerRoom)) +
+  scale_x_continuous(breaks=c(0,2,4,6,8,10,12,14,16,18,20)) +
+  geom_bar(stat='identity',colour="white", fill = fillColorRoom) +
+  labs(x = 'No. of.Room(s)', y = 'Price', title = 'Price and  Rooms') +
+  theme_bw()
+  
+  
+melData <- melData %>% 
+  mutate(month_of_year = month(dmy(Date)))
+
+melData <- melData %>% 
+  mutate(yearOfSale = year(dmy(Date)))
+
+transformdata = melData %>% filter(!is.na(Price)) %>%
+                select(-c(Lattitude,Longtitude,Date,Address))
+
+features <- colnames(transformdata)
+
+for (f in features) {
+  if ((class(transformdata[[f]])=="factor") || (class(transformdata[[f]])=="character")) {
+    levels <- unique(transformdata[[f]])
+    transformdata[[f]] <- as.numeric(factor(transformdata[[f]], levels=levels))
+  }
+}
+
+formula = Price ~ .
+
+fitControl <- trainControl(method="none")
+
+xgbGrid <- expand.grid(nrounds = 500,
+                       max_depth = 3,
+                       eta = .05,
+                       gamma = 0,
+                       colsample_bytree = .8,
+                       min_child_weight = 1,
+                       subsample = 1)
+
+
+set.seed(13)
+
+melDataXGB = train(formula, data = transformdata,
+                       method = "xgbTree",trControl = fitControl,
+                       tuneGrid = xgbGrid,na.action = na.pass,metric="RMSE")
+
+importance = varImp(melDataXGB)
+
+
+
+varImportance <- data.frame(Variables = row.names(importance[[1]]), 
+                            Importance = round(importance[[1]]$Overall,2))
+
+# Create a rank variable based on importance
+rankImportance <- varImportance %>%
+  mutate(Rank = paste0('#',dense_rank(desc(Importance))))
+
+rankImportancefull = rankImportance
+
+ggplot(rankImportance, aes(x = reorder(Variables, Importance), 
+                           y = Importance)) +
+  geom_bar(stat='identity',colour="white", fill = fillColor) +
+  geom_text(aes(x = Variables, y = 1, label = Rank),
+            hjust=0, vjust=.5, size = 4, colour = 'black',
+            fontface = 'bold') +
+  labs(x = 'Variables', title = 'Relative Variable Importance') +
+  coord_flip() + 
+  theme_bw()
+
+
+TypeData = melData %>% filter(!is.na(Price)) %>%
+  group_by(Type) %>% 
+  summarise(AvgPricePerType  = round(median(Price),0)) %>%
+  arrange(desc(AvgPricePerType ))
+
+TypeData$AvgPriceType = scales::dollar(TypeData$AvgPricePerType )
+
+TypeDataFull =TypeData %>% select(Type,AvgPriceType)
+ggplot(TypeData, aes(x = Type,y = AvgPricePerType )) +
+  geom_bar(stat='identity',colour="white", fill = fillColorRoom) +
+  labs(x = 'Type', y = 'Price', title = 'Price and  Type') +
+  theme_bw()
+  
+melData %>% filter(!is.na(Price)) %>% filter(!is.na(BuildingArea)) %>% 
+ggplot(aes(x=BuildingArea,y=Price))+
+  geom_point()+
+  scale_x_continuous(limits=c(0,1000)) +
+  stat_smooth(aes(x=BuildingArea,y=Price),method="lm", color="red")+
+  theme_bw()+
+  theme(axis.title = element_text(size=16),axis.text = element_text(size=14))+
+  xlab("(BuildingArea)")+
+  ylab("Price")
+  
+  
+bathroomData = melData %>% filter(!is.na(Price)) %>%
+  group_by(Bathroom) %>% 
+  summarise(AvgPricePerRoom = round(median(Price),0)) %>%
+  arrange(desc(AvgPricePerRoom))
+
+bathroomData$AvgPriceRoom = scales::dollar(bathroomData$AvgPricePerRoom)
+
+bathroomDataFull =bathroomData %>% select(Bathroom,AvgPriceRoom)
+
+colnames(bathroomDataFull) = c("Bathroom","Average House Price")
+
+datatable(bathroomDataFull, style="bootstrap", class="table-condensed", options = list(dom = 'tp',scrollX = TRUE))
+
+ggplot(bathroomData, aes(x = Bathroom,y = AvgPricePerRoom)) +
+  scale_x_continuous(breaks=c(0,2,4,6,8,10)) +
+  geom_bar(stat='identity',colour="white", fill = fillColorRoom) +
+  labs(x = 'No. of.Bathroom(s)', y = 'Price', title = 'Price and  Bath Rooms') +
+  theme_bw()
