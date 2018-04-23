@@ -238,3 +238,52 @@ ggplot(bathroomData, aes(x = Bathroom,y = AvgPricePerRoom)) +
   geom_bar(stat='identity',colour="white", fill = fillColorRoom) +
   labs(x = 'No. of.Bathroom(s)', y = 'Price', title = 'Price and  Bath Rooms') +
   theme_bw()
+
+d <- lm(Price ~ log2(Rooms) + (!is.na(Landsize)) + (!is.na(Suburb)) + Type +(!is.na(Regionname))+ (!is.na(CouncilArea)), melhousing)
+d
+cross_validation <- function(formula,data,n)
+{
+  rmse1 <- crossv_kfold(data = data,n) %>%
+    mutate(fit=map(train,~lm(formula,data = .)))%>%
+    mutate(rmsevalues=map2_dbl(fit,test,rmse))
+  avg_rmse <- mean(rmse1$rmsevalues)
+  return(avg_rmse)
+}
+
+set.seed(1)
+error1 <- cross_validation(log2(Price) ~ log2(Rooms) + (!is.na(Landsize)) + (!is.na(Suburb)) + Type +(!is.na(Regionname))+ (!is.na(CouncilArea)) , data=HousingData, n=5)
+print(error1)
+
+c <- dplyr::filter(HousingData,  !is.na(Price)) #Removed null values from original Dataset from Price column
+d <- select(c,Price) #selected price column
+e <- log(d) #took log transformation because our fitted price is in log transformation in our model
+y <- fitted(fit) # stored fitted values in y
+y1 <- as.tibble(y) #converted to tibble
+e1 <- tibble::rowid_to_column(e, "ID") #given index as ID for ease of joining
+y2 <- tibble::rowid_to_column(y1, "ID") #given index as ID for ease of joining
+compare_prices <- inner_join(e1,y2, by = "ID") #did inner join to show that we are not missing anyt values
+#compare_prices %>% select(-ID) %>% summarise_all(funs(mean))
+compare_prices1 <- rename(compare_prices, Old_Price= Price, Predicted_Price = value) #rename column names for ease of understanding
+ggplot(compare_prices1, aes(Old_Price, Predicted_Price)) +
+     geom_point() +
+     geom_smooth() #plotted the trend of old price vs predicted price
+compare_prices1 %>% select(-ID) %>% summarise_all(funs(mean)) # Average of old price and predicted price
+
+
+ggplot(HousingData, aes(as.factor(Regionname), log2(Price))) + geom_boxplot()
+
+ggplot(HousingData, aes(log2(Rooms), log2(Price))) + geom_point(alpha = 0.5)
+
+ggplot(HousingData, aes(as.factor(Type), log2(Price))) + geom_boxplot()
+
+ggplot(HousingData, aes(SellerG, log2(Price))) + geom_boxplot()
+
+ggplot(HousingData, aes(as.factor(CouncilArea), log2(Price))) + geom_boxplot()
+
+ggplot(HousingData, aes(log2(BuildingArea), log2(Price))) + geom_point(alpha = 0.5)
+
+ggplot(HousingData, aes(log2(Landsize), log2(Price))) + geom_point(alpha = 0.5)
+
+fit <- lm(log2(Price) ~ log2(Rooms) + SellerG + (!is.na(Landsize)) + (!is.na(Suburb)) + Type +(!is.na(Regionname))+ (!is.na(CouncilArea)) , data=HousingData)
+
+print(fit)
